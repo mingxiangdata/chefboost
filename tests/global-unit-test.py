@@ -293,7 +293,7 @@ if __name__ == '__main__':
 		gc.collect()
 
 		print("-------------------------")
-		
+
 		print("Is there any none predictions?")
 		config = {'algorithm': 'C4.5', 'enableParallelism': enableParallelism}
 		model = cb.fit(pd.read_csv("dataset/none_train.txt"), config)

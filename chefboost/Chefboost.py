@@ -55,13 +55,12 @@ def fit(df, config = {}, target_label = 'Decision', validation_df = None):
 
 	#if target is not the last column
 	if df.columns[-1] != 'Decision':
-		if 'Decision' in df.columns:
-			new_column_order = df.columns.drop('Decision').tolist() + ['Decision']
-			#print(new_column_order)
-			df = df[new_column_order]
-		else:
+		if 'Decision' not in df.columns:
 			raise ValueError('Please set the target_label')
 
+		new_column_order = df.columns.drop('Decision').tolist() + ['Decision']
+		#print(new_column_order)
+		df = df[new_column_order]
 	#------------------------
 
 	base_df = df.copy()
@@ -83,9 +82,7 @@ def fit(df, config = {}, target_label = 'Decision', validation_df = None):
 			min_value = df[column].min()
 			idx = df[df[column].isna()].index
 
-			nan_value = []
-			nan_value.append(column)
-
+			nan_value = [column]
 			if idx.shape[0] > 0:
 				df.loc[idx, column] = min_value - 1
 				nan_value.append(min_value - 1)
@@ -134,11 +131,11 @@ def fit(df, config = {}, target_label = 'Decision', validation_df = None):
 		freeze_support()
 	#------------------------
 	raw_df = df.copy()
-	num_of_rows = df.shape[0]; num_of_columns = df.shape[1]
+	num_of_rows = df.shape[0]
+	num_of_columns = df.shape[1]
 
-	if algorithm == 'Regression':
-		if df['Decision'].dtypes == 'object':
-			raise ValueError('Regression trees cannot be applied for nominal target values! You can either change the algorithm or data set.')
+	if algorithm == 'Regression' and df['Decision'].dtypes == 'object':
+		raise ValueError('Regression trees cannot be applied for nominal target values! You can either change the algorithm or data set.')
 
 	if df['Decision'].dtypes != 'object': #this must be regression tree even if it is not mentioned in algorithm
 
@@ -157,7 +154,7 @@ def fit(df, config = {}, target_label = 'Decision', validation_df = None):
 
 	if enableAdaboost == True:
 		#enableParallelism = False
-		for j in range(0, num_of_columns):
+		for j in range(num_of_columns):
 			column_name = df.columns[j]
 			if df[column_name].dtypes  == 'object':
 				raise ValueError('Adaboost must be run on numeric data set for both features and target')
@@ -166,12 +163,12 @@ def fit(df, config = {}, target_label = 'Decision', validation_df = None):
 
 	print(algorithm," tree is going to be built...")
 
-	dataset_features = dict() #initialize a dictionary. this is going to be used to check features numeric or nominal. numeric features should be transformed to nominal values based on scales.
+	dataset_features = {}
 
 	header = "def findDecision(obj): #"
 
 	num_of_columns = df.shape[1]-1
-	for i in range(0, num_of_columns):
+	for i in range(num_of_columns):
 		column_name = df.columns[i]
 		dataset_features[column_name] = df[column_name].dtypes
 		header = header + "obj[" + str(i) +"]: "+column_name
@@ -184,7 +181,8 @@ def fit(df, config = {}, target_label = 'Decision', validation_df = None):
 
 	begin = time.time()
 
-	trees = []; alphas = []
+	trees = []
+	alphas = []
 
 	if enableAdaboost == True:
 		trees, alphas = adaboost.apply(df, config, header, dataset_features, validation_df = validation_df, process_id = process_id)
@@ -255,14 +253,8 @@ def predict(model, param):
 	trees = model["trees"]
 	config = model["config"]
 
-	alphas = []
-	if "alphas" in model:
-		alphas = model["alphas"]
-
-	nan_values = []
-	if "nan_values" in model:
-		nan_values = model["nan_values"]
-
+	alphas = model["alphas"] if "alphas" in model else []
+	nan_values = model["nan_values"] if "nan_values" in model else []
 	#-----------------------
 	#handle missing values
 
@@ -271,11 +263,8 @@ def predict(model, param):
 		column_name = column[0]
 		missing_value = column[1]
 
-		if pd.isna(missing_value) != True:
-			#print("missing values will be replaced with ",missing_value," in ",column_name," column")
-
-			if pd.isna(param[column_index]):
-				param[column_index] = missing_value
+		if pd.isna(missing_value) != True and pd.isna(param[column_index]):
+			param[column_index] = missing_value
 
 		column_index = column_index + 1
 
@@ -300,7 +289,7 @@ def predict(model, param):
 			classification = False
 		else:
 			classification = True
-			prediction_classes = [0 for i in alphas]
+			prediction_classes = [0 for _ in alphas]
 
 	#-----------------------
 
@@ -312,15 +301,13 @@ def predict(model, param):
 				custom_prediction = tree.findDecision(param)
 
 				if custom_prediction != None:
-					if type(custom_prediction) != str: #regression
-
-						if enableGBM == True and classification == True:
-							prediction_classes[index % len(alphas)] += custom_prediction
-						else:
-							prediction += custom_prediction
-					else:
+					if type(custom_prediction) == str:
 						classification = True
 						prediction_classes.append(custom_prediction)
+					elif enableGBM == True and classification == True:
+						prediction_classes[index % len(alphas)] += custom_prediction
+					else:
+						prediction += custom_prediction
 			else: #adaboost
 				prediction += alphas[index] * tree.findDecision(param)
 			index = index + 1
@@ -337,20 +324,18 @@ def predict(model, param):
 
 	if classification == False:
 		return prediction
-	else:
-		if enableGBM == True and classification == True:
-			return alphas[np.argmax(prediction_classes)]
-		else: #classification
-			#e.g. random forest
-			#get predictions made by different trees
-			predictions = np.array(prediction_classes)
+	if enableGBM == True and classification == True:
+		return alphas[np.argmax(prediction_classes)]
+	#e.g. random forest
+	#get predictions made by different trees
+	predictions = np.array(prediction_classes)
 
-			#find the most frequent prediction
-			(values, counts) = np.unique(predictions, return_counts=True)
-			idx = np.argmax(counts)
-			prediction = values[idx]
+	#find the most frequent prediction
+	(values, counts) = np.unique(predictions, return_counts=True)
+	idx = np.argmax(counts)
+	prediction = values[idx]
 
-			return prediction
+	return prediction
 
 def save_model(base_model, file_name="model.pkl"):
 
@@ -363,15 +348,11 @@ def save_model(base_model, file_name="model.pkl"):
 	model = base_model.copy()
 
 	#modules cannot be saved. Save its reference instead.
-	module_names = []
-	for tree in model["trees"]:
-		module_names.append(tree.__name__)
-
+	module_names = [tree.__name__ for tree in model["trees"]]
 	model["trees"] = module_names
 
-	f = open("outputs/rules/"+file_name, "wb")
-	pickle.dump(model,f)
-	f.close()
+	with open("outputs/rules/"+file_name, "wb") as f:
+		pickle.dump(model,f)
 
 def load_model(file_name="model.pkl"):
 
@@ -452,10 +433,9 @@ def feature_importance(rules):
 				for feature_explainer in feature_explainer_list:
 					feature = feature_explainer.split(": ")[1].replace("\n", "")
 					pivot[feature] = 0
-			else:
-				if "# " in line:
-					rule = line.strip().split("# ")[1]
-					rules.append(json.loads(rule))
+			elif "# " in line:
+				rule = line.strip().split("# ")[1]
+				rules.append(json.loads(rule))
 
 			line_idx = line_idx + 1
 
@@ -485,7 +465,7 @@ def feature_importance(rules):
 		#normalize feature importance
 
 		total_score = 0
-		for feature, score in pivot.items():
+		for score in pivot.values():
 			total_score = total_score + score
 
 		for feature, score in pivot.items():
@@ -493,9 +473,7 @@ def feature_importance(rules):
 
 		instances = []
 		for feature, score in pivot.items():
-			instance = []
-			instance.append(feature)
-			instance.append(score)
+			instance = [feature, score]
 			instances.append(instance)
 
 		df = pd.DataFrame(instances, columns = ["feature", "final_importance"])
@@ -513,7 +491,7 @@ def feature_importance(rules):
 
 		for df in dfs:
 			hf = hf.merge(df, on = ["feature"], how = "left")
-			hf["importance"] = hf["importance"] + hf["final_importance"]
+			hf["importance"] += hf["final_importance"]
 			hf = hf.drop(columns = ["final_importance"])
 
 		#------------------------
