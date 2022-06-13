@@ -25,14 +25,14 @@ def apply(df, config, header, dataset_features, validation_df = None, process_id
 
 	input_params = []
 
-	pbar = tqdm(range(0, num_of_trees), desc='Bagging')
+	pbar = tqdm(range(num_of_trees), desc='Bagging')
+	root = 1
+
 	for i in pbar:
 		pbar.set_description("Sub decision tree %d is processing" % (i+1))
 		subset = df.sample(frac=1/num_of_trees)
 
-		root = 1
-
-		moduleName = "outputs/rules/rule_"+str(i)
+		moduleName = f"outputs/rules/rule_{str(i)}"
 		file = moduleName+".py"
 
 		functions.createFile(file, header)
@@ -50,11 +50,7 @@ def apply(df, config, header, dataset_features, validation_df = None, process_id
 
 		#---------------------------------
 
-		if num_of_trees <= num_cores:
-			POOL_SIZE = num_of_trees
-		else:
-			POOL_SIZE = num_cores
-
+		POOL_SIZE = num_of_trees if num_of_trees <= num_cores else num_cores
 		with closing(multiprocessing.Pool(POOL_SIZE)) as pool:
 			funclist = []
 			for input_param in input_params:
@@ -72,8 +68,8 @@ def apply(df, config, header, dataset_features, validation_df = None, process_id
 
 	#-------------------------------
 	#collect models for both serial and parallel here
-	for i in range(0, num_of_trees):
-		moduleName = "outputs/rules/rule_"+str(i)
+	for i in range(num_of_trees):
+		moduleName = f"outputs/rules/rule_{str(i)}"
 		fp, pathname, description = imp.find_module(moduleName)
 		myrules = imp.load_module(moduleName, fp, pathname, description)
 		models.append(myrules)

@@ -50,14 +50,15 @@ def calculateEntropy(df, config):
 
 	#print(df)
 
-	instances = df.shape[0]; columns = df.shape[1]
+	instances = df.shape[0]
+	columns = df.shape[1]
 	#print(instances," rows, ",columns," columns")
 
 	decisions = df['Decision'].value_counts().keys().tolist()
 
 	entropy = 0
 
-	for i in range(0, len(decisions)):
+	for i in range(len(decisions)):
 		decision = decisions[i]
 		num_of_decisions = df['Decision'].value_counts().tolist()[i]
 		#print(decision,"->",num_of_decisions)
@@ -76,11 +77,7 @@ def findDecision(df, config):
 	gains = list(resp_obj["gains"].values())
 	entropy = resp_obj["entropy"]
 
-	if algorithm == "ID3":
-		winner_index = gains.index(max(gains))
-		metric_value = entropy
-		metric_name = "Entropy"
-	elif algorithm == "C4.5":
+	if algorithm in ["ID3", "C4.5"]:
 		winner_index = gains.index(max(gains))
 		metric_value = entropy
 		metric_name = "Entropy"
@@ -106,18 +103,13 @@ def findGains(df, config):
 	algorithm = config['algorithm']
 	decision_classes = df["Decision"].unique()
 
-	#-----------------------------
-
-	entropy = 0
-
-	if algorithm == "ID3" or algorithm == "C4.5":
-		entropy = calculateEntropy(df, config)
-
-	columns = df.shape[1]; instances = df.shape[0]
+	entropy = calculateEntropy(df, config) if algorithm in ["ID3", "C4.5"] else 0
+	columns = df.shape[1]
+	instances = df.shape[0]
 
 	gains = []
 
-	for i in range(0, columns-1):
+	for i in range(columns-1):
 		column_name = df.columns[i]
 		column_type = df[column_name].dtypes
 
@@ -129,12 +121,8 @@ def findGains(df, config):
 		classes = df[column_name].value_counts()
 
 		splitinfo = 0
-		if algorithm == 'ID3' or algorithm == 'C4.5':
-			gain = entropy * 1
-		else:
-			gain = 0
-
-		for j in range(0, len(classes)):
+		gain = entropy * 1 if algorithm in ['ID3', 'C4.5'] else 0
+		for j in range(len(classes)):
 			current_class = classes.keys().tolist()[j]
 			#print(column_name,"->",current_class)
 
@@ -144,7 +132,7 @@ def findGains(df, config):
 			subset_instances = subdataset.shape[0]
 			class_probability = subset_instances/instances
 
-			if algorithm == 'ID3' or algorithm == 'C4.5':
+			if algorithm in ['ID3', 'C4.5']:
 				subset_entropy = calculateEntropy(subdataset, config)
 				gain = gain - class_probability * subset_entropy
 
@@ -156,7 +144,7 @@ def findGains(df, config):
 
 				subgini = 1
 
-				for k in range(0, len(decision_list)):
+				for k in range(len(decision_list)):
 					subgini = subgini - math.pow((decision_list[k]/subset_instances), 2)
 
 				gain = gain + (subset_instances / instances) * subgini
@@ -194,10 +182,8 @@ def findGains(df, config):
 
 	#-------------------------------------------------
 
-	resp_obj = {}
-	resp_obj["gains"] = {}
-
-	for idx, feature in enumerate(df.columns[0:-1]): #Decision is always the last column
+	resp_obj = {"gains": {}}
+	for idx, feature in enumerate(df.columns[:-1]): #Decision is always the last column
 		#print(idx, feature)
 		resp_obj["gains"][feature] = gains[idx]
 

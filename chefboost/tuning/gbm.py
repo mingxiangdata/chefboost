@@ -15,28 +15,22 @@ def findPrediction(row):
 	epoch = row['Epoch']
 	row = row.drop(labels=['Epoch'])
 	columns = row.shape[0]
-	
-	params = []
-	for j in range(0, columns-1):
-		params.append(row[j])
-		
-	moduleName = "outputs/rules/rules%s" % (epoch-1)
+
+	params = [row[j] for j in range(columns-1)]
+	moduleName = f"outputs/rules/rules{epoch - 1}"
 	fp, pathname, description = imp.find_module(moduleName)
 	myrules = imp.load_module(moduleName, fp, pathname, description)
-	
-	#prediction = int(myrules.findDecision(params)) 
-	prediction = myrules.findDecision(params)
-	
-	return prediction
+
+	return myrules.findDecision(params)
 
 def regressor(df, config, header, dataset_features, validation_df = None, process_id = None):
 	models = []
-	
+
 	#we will update decisions in every epoch, this will be used to restore
 	base_actuals = df.Decision.values
-	
+
 	algorithm = config['algorithm']
-	
+
 	enableRandomForest = config['enableRandomForest']
 	num_of_trees = config['num_of_trees']
 	enableMultitasking = config['enableMultitasking']
@@ -46,122 +40,125 @@ def regressor(df, config, header, dataset_features, validation_df = None, proces
 	learning_rate = config['learning_rate']
 
 	enableAdaboost = config['enableAdaboost']
-	
+
 	#------------------------------
-	
-	boosted_from = 0; boosted_to = 0
-	
+
+	boosted_from = 0
+	boosted_to = 0
+
 	#------------------------------
-	
+
 	base_df = df.copy()
-	
+
 	#gbm will manipulate actuals. store its raw version.
 	target_values = base_df['Decision'].values
 	num_of_instances = target_values.shape[0]
-	
+
 	root = 1
-	file = "outputs/rules/rules0.py"; json_file = "outputs/rules/rules0.json"
+	file = "outputs/rules/rules0.py"
+	json_file = "outputs/rules/rules0.json"
 	functions.createFile(file, header)
 	functions.createFile(json_file, "[\n")
-	
+
 	Training.buildDecisionTree(df,root,file, config, dataset_features
 		, parent_level = 0, leaf_id = 0, parents = 'root') #generate rules0
-	
+
 	#functions.storeRule(json_file," {}]")
-	
+
 	df = base_df.copy()
-	
+
 	base_df['Boosted_Prediction'] = 0
-	
+
 	#------------------------------
-	
-	best_epoch_idx = 0; best_epoch_loss = 1000000
-	
+
+	best_epoch_idx = 0
+	best_epoch_loss = 1000000
+
 	pbar = tqdm(range(1, epochs+1), desc='Boosting')
-	
+
+	mae = 0
+
 	#for index in range(1,epochs+1):
 	#for index in tqdm(range(1,epochs+1), desc='Boosting'):
 	for index in pbar:
 		#print("epoch ",index," - ",end='')
 		loss = 0
-		
+
 		#run data(i-1) and rules(i-1), save data1
-		
+
 		#dynamic import
-		moduleName = "outputs/rules/rules%s" % (index-1)
+		moduleName = f"outputs/rules/rules{index - 1}"
 		fp, pathname, description = imp.find_module(moduleName)
 		myrules = imp.load_module(moduleName, fp, pathname, description) #rules0
-		
+
 		models.append(myrules)
-		
-		new_data_set = "outputs/data/data%s.csv" % (index)
+
+		new_data_set = f"outputs/data/data{index}.csv"
 		f = open(new_data_set, "w")
-		
+
 		#put header in the following file
 		columns = df.shape[1]
-		
-		mae = 0
-		
+
 		#----------------------------------------
-		
+
 		df['Epoch'] = index
 		df['Prediction'] = df.apply(findPrediction, axis=1)
-		
+
 		base_df['Boosted_Prediction'] += df['Prediction']
-		
+
 		loss = (base_df['Boosted_Prediction'] - base_df['Decision']).pow(2).sum()
 		current_loss = loss / num_of_instances #mse
-		
+
 		if index == 1: 
 			boosted_from = current_loss * 1
 		elif index == epochs:
 			boosted_to = current_loss * 1
-		
+
 		if current_loss < best_epoch_loss:
 			best_epoch_loss = current_loss * 1
 			best_epoch_idx = index * 1
-		
+
 		df['Decision'] = int(learning_rate)*(df['Decision'] - df['Prediction'])
 		df = df.drop(columns = ['Epoch', 'Prediction'])
-		
+
 		#---------------------------------
-		
+
 		df.to_csv(new_data_set, index=False)
 		#data(i) created
-		
+
 		#---------------------------------
-		
-		file = "outputs/rules/rules"+str(index)+".py"
-		json_file = "outputs/rules/rules"+str(index)+".json"
-		
+
+		file = f"outputs/rules/rules{str(index)}.py"
+		json_file = f"outputs/rules/rules{str(index)}.json"
+
 		functions.createFile(file, header)
 		functions.createFile(json_file, "[\n")
-		
+
 		current_df = df.copy()
 		Training.buildDecisionTree(df,root,file, config, dataset_features
 			, parent_level = 0, leaf_id = 0, parents = 'root', main_process_id = process_id)
-		
+
 		#functions.storeRule(json_file," {}]")
-		
+
 		df = current_df.copy() #numeric features require this restoration to apply findDecision function
-		
+
 		#rules(i) created
-		
+
 		loss = loss / num_of_instances
 		#print("epoch ",index," - loss: ",loss)
 		#print("loss: ",loss)
 		pbar.set_description("Epoch %d. Loss: %d. Process: " % (index, loss))
-		
+
 		gc.collect()
-		
+
 	#---------------------------------
-	
+
 	print("The best epoch is ", best_epoch_idx," with ", best_epoch_loss," loss value")
-	models = models[0:best_epoch_idx]
+	models = models[:best_epoch_idx]
 	config["epochs"] = best_epoch_idx
-	
+
 	print("MSE of ",num_of_instances," instances are boosted from ",boosted_from," to ",best_epoch_loss," in ",epochs," epochs")
-	
+
 	return models
 
 def classifier(df, config, header, dataset_features, validation_df = None, process_id = None):

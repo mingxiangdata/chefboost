@@ -10,7 +10,7 @@ def bulk_prediction(df, model):
 
 	predictions = []
 	for index, instance in df.iterrows():
-		features = instance.values[0:-1]
+		features = instance.values[:-1]
 		prediction = cb.predict(model, features)
 		predictions.append(prediction)
 
@@ -22,8 +22,7 @@ def restoreTree(moduleName):
 
 def softmax(w):
 	e = np.exp(np.array(w, dtype=np.float32))
-	dist = e / np.sum(e)
-	return dist
+	return e / np.sum(e)
 
 def sign(x):
 	if x > 0:
@@ -36,8 +35,8 @@ def sign(x):
 def formatRule(root):
 	resp = ''
 
-	for i in range(0, root):
-		resp = resp + '   '
+	for _ in range(root):
+		resp = f'{resp}   '
 
 	return resp
 
@@ -64,16 +63,16 @@ def initializeFolders():
 	outputs_path = os.getcwd()+os.path.sep+"outputs"+os.path.sep
 
 	try:
-		if path.exists(outputs_path+"data"):
-			for file in os.listdir(outputs_path+"data"):
-				os.remove(outputs_path+"data"+os.path.sep+file)
+		if path.exists(f"{outputs_path}data"):
+			for file in os.listdir(f"{outputs_path}data"):
+				os.remove(f"{outputs_path}data{os.path.sep}{file}")
 
-		if path.exists(outputs_path+"rules"):
-			for file in os.listdir(outputs_path+"rules"):
+		if path.exists(f"{outputs_path}rules"):
+			for file in os.listdir(f"{outputs_path}rules"):
 				if ".py" in file or ".json" in file or ".txt" in file or ".pkl" in file or ".csv" in file:
-					os.remove(outputs_path+"rules"+os.path.sep+file)
+					os.remove(f"{outputs_path}rules{os.path.sep}{file}")
 	except Exception as err:
-		print("WARNING: ", str(err))
+		print("WARNING: ", err)
 
 	#------------------------------------
 
